@@ -86,11 +86,15 @@ let rec policy_to_json (pol : policy) : json = match pol with
   | Mod h -> `Assoc [("type", `String "mod");
                      ("header", to_json_header h);
                      ("value", to_json_value h)]
-  | Union (p, q) -> `Assoc [("type", `String "union");
-                            ("pols", `List [policy_to_json p; policy_to_json q])]
+  | Union (p, q) ->
+    `Assoc [("type", `String "union");
+            ("pols", `List (flatten_union pol |> List.map ~f:policy_to_json))]
   | Seq (p, q) ->
     `Assoc [("type", `String "seq");
            ("pols", `List [policy_to_json p; policy_to_json q])]
+  | DisjointUnion (p, q) ->
+    `Assoc [("type", `String "disjoint");
+            ("pols", `List [policy_to_json p; policy_to_json q])]
   | Star p -> `Assoc [("type", `String "star");
                       ("pol", policy_to_json p)]
   | Link (sw1, pt1, sw2, pt2) ->
@@ -154,6 +158,9 @@ let rec policy_from_json (json : json) : policy =
    | "seq" -> mk_big_seq (json |> member "pols" |> to_list
                           |> List.map ~f:policy_from_json)
    | "star" -> Star (policy_from_json (json |> member "pol"))
+   | "disjoint" ->
+     mk_big_disjoint_union (json |> member "pols" |> to_list
+                            |> List.map ~f:policy_from_json)
    | "link" -> Link (json |> member "sw1" |> to_int |> Int64.of_int,
                      json |> member "pt1" |> to_int |> int_to_uint32,
                      json |> member "sw2" |> to_int |> Int64.of_int,

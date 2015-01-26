@@ -102,6 +102,11 @@ let specialize_policy sw pol =
         loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (mk_seq p1 p2)))
       | NetKAT_Types.Star pol ->
         loop pol (fun p -> k (mk_star p))
+      | NetKAT_Types.DisjointUnion (pol1, pol2) ->
+        loop pol1 (fun p1 ->
+          loop pol2 (fun p2 ->
+            (* TODO(arjun): need disjoint union axioms to implement optimizations *)
+            k (DisjointUnion (p1, p2))))
       | NetKAT_Types.Link _ | NetKAT_Types.VLink _ ->
 	failwith "Not a local policy" in
   loop pol (fun x -> x)
@@ -113,6 +118,12 @@ let mk_big_or = List.fold_left ~f:mk_or ~init:NetKAT_Types.False
 let mk_big_union = List.fold_left ~f:mk_union ~init:NetKAT_Types.drop
 
 let mk_big_seq = List.fold_left ~f:mk_seq ~init:NetKAT_Types.id
+
+let mk_big_disjoint_union lst = match lst with
+  | [] -> NetKAT_Types.drop
+  | [p] -> p
+  | p :: ps -> List.fold_left ps ~init:p
+      ~f:(fun p q -> NetKAT_Types.DisjointUnion (p, q))
 
 (* list_of_and flattens a predicate into a list of predicates, each of which
    is not an And. E.g., list_of_and (And (p, And (q, r))) = [p; q; r], if
@@ -155,3 +166,12 @@ let rec norm_policy (pol : policy) : policy = match pol with
   | Seq (p, q) ->
     let pol' = Seq (norm_policy p, norm_policy q) in
     mk_big_seq (list_of_seq pol')
+
+let rec flatten_union_k (pol : policy)
+  (acc : policy list)
+  (k : policy list -> 'a) : 'a = match pol with
+  | Union (p, q) -> flatten_union_k p acc (fun acc ->
+    flatten_union_k q acc k)
+  | _ -> k (pol :: acc)
+
+let flatten_union (pol : policy) : policy list = flatten_union_k pol [] ident

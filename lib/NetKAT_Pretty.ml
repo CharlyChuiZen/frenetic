@@ -2,12 +2,12 @@ open NetKAT_Types
 
 module Formatting = struct
   open Format
-    
+
   (* The type of the immediately surrounding policy_context, which
      guides parenthesis insertion. *)
-    
+
   type predicate_context = OR_L | OR_R | AND_L | AND_R | NEG | PAREN_PR
-      
+
   let format_header_val (fmt : formatter) (hv : header_val) (asgn : string) : unit = match hv with
     | Switch(n) -> fprintf fmt "@[switch %s %Lu@]" asgn n
     | Location(Physical n) -> fprintf fmt "@[port %s %lu@]" asgn n
@@ -29,15 +29,15 @@ module Formatting = struct
     | VPort(n) -> fprintf fmt "@[vport %s %Lu@]" asgn n
     | Local(s,n) -> fprintf fmt "@[local<%s> %s %Lu@]" s asgn n
 
-  let rec pred (cxt : predicate_context) (fmt : formatter) (pr : pred) : unit = 
+  let rec pred (cxt : predicate_context) (fmt : formatter) (pr : pred) : unit =
     match pr with
-      | True -> 
+      | True ->
         fprintf fmt "@[id@]"
-      | False -> 
+      | False ->
         fprintf fmt "@[drop@]"
-      | (Test hv) -> 
+      | (Test hv) ->
         format_header_val fmt hv "="
-      | Neg p' -> 
+      | Neg p' ->
         begin match cxt with
           | PAREN_PR
           | NEG -> fprintf fmt "@[not %a@]" (pred NEG) p'
@@ -48,49 +48,61 @@ module Formatting = struct
           | PAREN_PR
           | OR_L
           | OR_R
-          | AND_L -> 
+          | AND_L ->
 	    fprintf fmt "@[%a and@ %a@]" (pred AND_L) p1 (pred AND_R) p2
-          | _ -> 
+          | _ ->
 	    fprintf fmt "@[(@[%a and@ %a@])@]" (pred AND_L) p1 (pred AND_R) p2
         end
-      | Or (p1, p2) -> 
+      | Or (p1, p2) ->
         begin match cxt with
           | PAREN_PR
           | OR_L -> fprintf fmt "@[%a or@ %a@]" (pred OR_L) p1 (pred OR_R) p2
           | _ -> fprintf fmt "@[(@[%a or@ %a@])@]" (pred OR_L) p1 (pred OR_R) p2
         end
 
-  type policy_context = 
-    | SEQ_L | SEQ_R 
-    | PAR_L | PAR_R 
-    | STAR 
+  type policy_context =
+    | SEQ_L | SEQ_R
+    | DISJ_L | DISJ_R
+    | PAR_L | PAR_R
+    | STAR
     | PAREN
 
   let rec pol (cxt : policy_context) (fmt : formatter) (p : policy) : unit =
     match p with
-      | Filter (True as pr) | Filter (False as pr) ->  
+      | Filter (True as pr) | Filter (False as pr) ->
 	pred PAREN_PR fmt pr
-      | Filter pr -> 
+      | Filter pr ->
 	fprintf fmt "filter "; pred PAREN_PR fmt pr
-      | Mod hv -> 
+      | Mod hv ->
         format_header_val fmt hv ":="
-      | Star p' -> 
+      | Star p' ->
         begin match cxt with
-          | PAREN 
-          | STAR -> fprintf fmt "@[%a*@]" (pol STAR) p' 
+          | PAREN
+          | STAR -> fprintf fmt "@[%a*@]" (pol STAR) p'
           | _ -> fprintf fmt "@[@[(%a)*@]@]" (pol PAREN) p'
         end
-      | Union (p1, p2) -> 
+      | Union (p1, p2) ->
         begin match cxt with
           | PAREN
           | PAR_L -> fprintf fmt "@[%a |@ %a@]" (pol PAR_L) p1 (pol PAR_R) p2
           | _ -> fprintf fmt "@[(@[%a |@ %a@])@]" (pol PAR_L) p1 (pol PAR_R) p2
         end
-      | Seq (p1, p2) -> 
+      | DisjointUnion (p1, p2) ->
         begin match cxt with
           | PAREN
           | PAR_L
           | PAR_R
+          | DISJ_L -> fprintf fmt "@[%a@ <>@ %a@]" (pol DISJ_L) p1 (pol DISJ_R) p2
+          | _ -> fprintf fmt "@[(@[%a <>@ %a@])@]" (pol DISJ_L) p1 (pol DISJ_R) p2
+        end
+
+      | Seq (p1, p2) ->
+        begin match cxt with
+          | PAREN
+          | PAR_L
+          | PAR_R
+          | DISJ_L
+          | DISJ_R
           | SEQ_L -> fprintf fmt "@[%a;@ %a@]" (pol SEQ_L) p1 (pol SEQ_R) p2
           | _ -> fprintf fmt "@[(@[%a;@ %a@])@]" (pol SEQ_L) p1 (pol SEQ_R) p2
         end
@@ -101,11 +113,11 @@ module Formatting = struct
         fprintf fmt "@[%Lu@@%Lu =>>@ %Lu@@%Lu@]"
           vsw vpt vsw' vpt'
 end
-  
+
 let format_policy = Formatting.pol Formatting.PAREN
 
 let format_pred = Formatting.pred Formatting.PAREN_PR
-    
+
 let string_of_policy = Util.make_string_of format_policy
 
 let string_of_pred = Util.make_string_of format_pred
@@ -127,4 +139,4 @@ and pretty_assoc_seq (p : policy) : policy = match p with
   | Seq (p1, Seq (p2, p3)) ->
     Seq (pretty_assoc_seq (Seq (p1, p2)), pretty_assoc_seq p3)
   | Seq (p1, p2) -> Seq (pretty_assoc p1, pretty_assoc p2)
-  | _ -> pretty_assoc p    
+  | _ -> pretty_assoc p

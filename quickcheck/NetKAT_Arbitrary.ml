@@ -18,7 +18,7 @@ let arbitrary_id =
   choose_int (0, 10) >>= fun l ->
   QuickCheck.arbitrary_listN l chr >>= fun cs ->
     ret_gen (QuickCheck_util.charlist_to_string (c::cs))
-				    
+
 let arbitrary_test, arbitrary_mod =
   let open QuickCheck_gen in
   let open NetKAT_Types in
@@ -40,11 +40,11 @@ let arbitrary_test, arbitrary_mod =
      * mentioned in a comment below
      * *)
     map_gen (fun i -> Switch i) AB.arbitrary_uint48;
-    (AB.arbitrary_uint32 >>= fun i -> 
-     QuickCheck_gen.choose_int32 (0l, 32l) >>= fun j -> 
+    (AB.arbitrary_uint32 >>= fun i ->
+     QuickCheck_gen.choose_int32 (0l, 32l) >>= fun j ->
      ret_gen (IP4Src(i,j)));
-    (AB.arbitrary_uint32 >>= fun i -> 
-     QuickCheck_gen.choose_int32 (0l, 32l) >>= fun j -> 
+    (AB.arbitrary_uint32 >>= fun i ->
+     QuickCheck_gen.choose_int32 (0l, 32l) >>= fun j ->
      ret_gen (IP4Dst(i,j)));
   ] @ shared),
   oneof ([
@@ -60,8 +60,8 @@ let treesize n x =
     then x
     else QuickCheck_gen.resize (n / (1 + Random.int n)) x
 
-let gen_atom_pred : pred QuickCheck_gen.gen = 
-  let open QuickCheck_gen in 
+let gen_atom_pred : pred QuickCheck_gen.gen =
+  let open QuickCheck_gen in
       arbitrary_test >>= fun hv ->
         ret_gen (Test hv)
 
@@ -95,7 +95,7 @@ let gen_pred : pred QuickCheck_gen.gen =
       (3, gen_pred_ctor ())
       ]
 
-let arbitrary_link : policy QuickCheck_gen.gen = 
+let arbitrary_link : policy QuickCheck_gen.gen =
   let open QuickCheck_gen in
   let open Arbitrary_Base in
   (* XXX(seliopou): The range of switch ids is currently limited in tests
@@ -117,7 +117,7 @@ let gen_lf_atom_pol : policy QuickCheck_gen.gen  =
     (gen_pred >>= fun pr ->
         ret_gen (Filter (pr))) ]
 
-let gen_atom_pol : policy QuickCheck_gen.gen = 
+let gen_atom_pol : policy QuickCheck_gen.gen =
   let open QuickCheck_gen in
   oneof [
     (arbitrary_mod >>= fun hv ->
@@ -127,7 +127,7 @@ let gen_atom_pol : policy QuickCheck_gen.gen =
     arbitrary_link ]
 
 let rec gen_composite_pol arbitrary_atom : policy QuickCheck_gen.gen =
-  let open QuickCheck_gen in 
+  let open QuickCheck_gen in
       sized (fun n -> treesize n
        (frequency [
           (3, gen_pol arbitrary_atom >>= fun p1 ->
@@ -185,8 +185,8 @@ let arbitrary_tcp : NetKAT_Semantics.packet QuickCheck_gen.gen =
             }
 
 let arbitrary_packet : NetKAT_Semantics.packet QuickCheck_gen.gen =
-  QuickCheck_gen.Gen 
-    (fun _ -> failwith "arbitrary_packet: not yet implemented")    
+  QuickCheck_gen.Gen
+    (fun _ -> failwith "arbitrary_packet: not yet implemented")
   (* let open QuickCheck_gen in *)
   (* let open QuickCheck in *)
   (* listN num_hdrs arbitrary_headerval >>= fun vals -> *)

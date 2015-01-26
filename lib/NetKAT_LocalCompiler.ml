@@ -50,8 +50,8 @@ module Field = struct
 
   (* Ensure that these are in the same order in which the variants appear. *)
   let all_fields =
-    [ Switch; Vlan; VlanPcp; EthType; IPProto; EthSrc; EthDst;
-      IP4Src; IP4Dst; TCPSrcPort; TCPDstPort; Location ]
+    [ Switch; Location; EthSrc; EthDst; Vlan; VlanPcp; EthType; IPProto;
+      IP4Src; IP4Dst; TCPSrcPort; TCPDstPort ]
 
   let is_valid_order (lst : t list) : bool =
     List.length lst = num_fields &&
@@ -128,7 +128,7 @@ module Field = struct
         let (m, lst) = f_seq' p lst in
         let (n, lst) = f_seq' q lst in
         (m * n, lst)
-      | Union _ -> (f_union pol, lst)
+      | DisjointUnion _ | Union _ -> (f_union pol, lst)
       | Star _ | Link _ -> (1, lst) (* bad, but it works *)
     and f_seq pol =
       let (size, preds) = f_seq' pol [] in
@@ -137,7 +137,7 @@ module Field = struct
     and f_union' pol k = match pol with
       | Mod _ -> k 1
       | Filter _ -> k 1
-      | Union (p, q) ->
+      | DisjointUnion (p, q) | Union (p, q) ->
         f_union' p (fun m -> f_union' q (fun n -> k (m + n)))
       | Seq _ -> k (f_seq pol)
       | Star _ | Link _ -> k 1 (* bad, but it works *)
@@ -183,6 +183,10 @@ module Value = struct
       during flowtable generation, though the syntax of the NetKAT language will
       prevent programs from generating these ill-formed predicates. *)
 
+  (*
+    10.1.0.0 / 16    10.0.0.0 / 8
+    0.0.10.1         0.0.10.0
+   *)
   let subset_eq a b =
     (* A partial order on values that should be reflexive, transitive, and
        antisymmetric. This should also satisfy certain properites related to
@@ -190,7 +194,8 @@ module Value = struct
     let subset_eq_mask a m b n =
       if m < n
         then false
-        else Int64.(shift_right_logical a m) = Int64.(shift_right_logical b m)
+        else
+          Int64.shift_right_logical a (64-n) = Int64.shift_right_logical b (64-n)
     in
     match a, b with
     | Const  a   , Const b
@@ -226,11 +231,7 @@ module Value = struct
       else if gt then
         if (not tight) || (n = (m + 1)) then Some(Mask(b, n)) else None
       else
-        if (not tight) || m = n then
-          let x, y = (Mask(a, m + 1), Mask(b, n + 1)) in
-          if subset_eq x y && subset_eq y x then Some(x) else None
-        else
-          None (* XXX(seliopou): complete definition *)
+        None
     in
     match a, b with
     | Const  a   , Const b
@@ -244,6 +245,7 @@ module Value = struct
     | _          , Query _ -> None
     | Mask(a, m) , Mask(b, n) -> meet_mask a m  b n
     | Const a, Mask(b, n)     -> meet_mask a 64 b n
+
 
   let join ?(tight=false) a b =
     (* Determines the least upper bound of two elements, if one exists. This
@@ -286,7 +288,22 @@ module Value = struct
     | Const a, Mask(b, n)     -> join_mask a 64 b n
 
   let hash = Hashtbl.hash
-  let compare = Pervasives.compare
+
+  let compare x y = match (x, y) with
+    | Const a, Mask (b, 64)
+    | Mask (a, 64), Const b
+    | Const a, Const b -> Pervasives.compare a b
+    | Const _ , _ -> -1
+    | _, Const _ -> 1
+    | Mask(a, m) , Mask(b, n) ->
+      let shift = 64 - min m n in
+      (match Pervasives.compare (Int64.shift_right a shift) (Int64.shift_right b shift) with
+       | 0 -> Pervasives.compare n m
+       | c -> c)
+    | Mask _, _ -> -1
+    | _, Mask _ -> 1
+    | _ -> Pervasives.compare x y
+
   let to_string = function
     | Const(a)   -> Printf.sprintf "Const(%Lu)" a
     | Mask(a, m) -> Printf.sprintf "Mask(%Lu, %d)" a m
@@ -311,8 +328,8 @@ module Pattern = struct
   type t = Field.t * Value.t
 
   let compare a b =
-    let c = Field.compare a b in
-    if c <> 0 then c else Value.compare a b
+    let c = Field.compare (fst a) (fst b) in
+    if c <> 0 then c else Value.compare (snd a) (snd b)
 
   let to_string (f, v) =
     Printf.sprintf "%s = %s" (Field.to_string f) (Value.to_string v)
@@ -599,6 +616,20 @@ module Repr = struct
       T.(sum (prod (atom v Action.one Action.zero) t)
              (prod (atom v Action.zero Action.one) f))
 
+  let dp_fold (g : Action.t -> T.t)
+              (h : Field.t * Value.t -> T.t -> T.t -> T.t)
+              (t : T.t) : T.t =
+(*     let g' = Memo.general g in
+    let h' = Memo.general (fun (x,y,z) -> h x y z) in
+ *)
+     let tbl = Hashtbl.Poly.create () in
+     let rec f t =
+       Hashtbl.Poly.find_or_add tbl t ~default:(fun () -> f' t)
+     and f' t = match T.unget t with
+      | T.Leaf r -> g r
+      | T.Branch ((v, l), tru, fls) -> h (v,l) (f tru) (f fls) in
+      f t
+
   let seq t u =
     (* Compute the sequential composition of [t] and [u] as a fold over [t]. In
        the case of a leaf node, each sequence [seq] of modifications is used to
@@ -619,7 +650,7 @@ module Repr = struct
                               of the decision variables in [u] need to be
                               removed because there are none. *)
     | None   ->
-      T.fold
+      dp_fold
         (fun par ->
           Action.Par.fold par ~init:(T.const Action.zero) ~f:(fun acc seq ->
             let u' = T.restrict Action.Seq.(to_alist seq) u in
@@ -635,7 +666,7 @@ module Repr = struct
     else
       T.sum t u
 
-  let star t =
+  let star' lhs t =
     (* Compute [star t] by iterating to a fixed point.
 
        NOTE that the equality check is not semantic equivalence, so this may not
@@ -647,7 +678,9 @@ module Repr = struct
         then acc
         else loop acc' power'
     in
-    loop (T.const Action.one) (T.const Action.one)
+    loop (T.const Action.one) lhs
+
+  let star = star' (T.const Action.one)
 
   let rec of_pred p =
     let open NetKAT_Types in
@@ -659,6 +692,9 @@ module Repr = struct
     | Or (p, q) -> T.sum (of_pred p) (of_pred q)
     | Neg(q)    -> T.map_r Action.negate (of_pred q)
 
+  let disj left right =
+    if Action.Par.is_empty left then right else left
+
   let rec of_policy_k p k =
     let open NetKAT_Types in
     match p with
@@ -667,11 +703,25 @@ module Repr = struct
     | Union (p, q) -> of_policy_k p (fun p' ->
                         of_policy_k q (fun q' ->
                           k (union p' q')))
-    | Seq (p, q) -> of_policy_k p (fun p' ->
-                      of_policy_k q (fun q' ->
-                        k (seq p' q')))
-    | Star p -> of_policy_k p (fun p' -> k (star p'))
-    | Link _ -> raise Non_local
+    | Seq (p, q) ->
+      of_policy_k p (fun p' ->
+        of_policy_k q (fun q' ->
+(*           (if NetKAT_Semantics.(size p > 30 || size q > 30) then
+            printf ">>> SEQ <<<<\n%s\n>>>> WITH <<<<<\n%s\n%!"
+              (NetKAT_Pretty.string_of_policy p)
+              (NetKAT_Pretty.string_of_policy q)
+          else
+            ()); *)
+          k (seq p' q')))
+    | Star p ->
+      of_policy_k p (fun p' ->
+        k (star p'))
+    | Link (sw1, pt1, sw2, pt2) ->
+      of_policy_k
+        (Seq (Filter (And (Test (Switch sw1), Test (Location (Physical pt1)))),
+              Seq (Mod (Switch sw2), Mod (Location (Physical pt2))))) k
+
+
 
   let rec of_policy p = of_policy_k p ident
 
@@ -728,6 +778,8 @@ let compile ?(order=`Heuristic) pol =
    | `Static flds -> Field.set_order flds);
   of_policy pol
 
+let clear_cache () = Repr.T.clear_cache ()
+
 let to_table sw_id t =
   (* Convert a [t] to a flowtable for switch [sw_id]. This is implemented as a
      fold over the [t]. Leaf nodes emit a single rule flowtable that mach all
@@ -757,21 +809,17 @@ let to_table sw_id t =
     ; hard_timeout = Permanent
     }
   in
-  let ft = Repr.T.fold
-    (fun r -> [(SDN.Pattern.match_all, None, r)])
-    (fun v t f ->
-      let t' = List.map t ~f:(fun (pattern, in_port, action) ->
-        let in_port = match v with
-          | (Field.Location, Value.Const p) -> Some(p)
-          | _ -> in_port
-        in
-        (Pattern.to_sdn v pattern, in_port, Action.demod v action))
-      in
-      t' @ f)
-    Repr.T.(restrict [(Field.Switch, Value.Const sw_id)] t)
+  let t = Repr.T.(restrict [(Field.Switch, Value.Const sw_id)] t) in
+  let tbl = Repr.T.to_table t in
+  let to_pattern hvs = List.fold_right hvs ~f:Pattern.to_sdn  ~init:SDN.Pattern.match_all in
+  let get_inport' current hv =
+  match hv with
+    | (Field.Location, Value.Const p) -> Some p
+    | _ -> current
   in
-  List.map ft ~f:(fun (pattern, in_port, action) ->
-    mk_flow pattern [Action.to_sdn ?in_port action])
+  let get_inport hvs = List.fold_left hvs ~init:None ~f:get_inport' in
+  let to_action in_port r = Action.to_sdn ?in_port r in
+  List.map tbl ~f:(fun (hvs, r) -> mk_flow (to_pattern hvs) [to_action (get_inport hvs) r])
 
 let pipes t =
   let module S = Set.Make(String) in
@@ -805,8 +853,14 @@ let size =
     (fun r -> 1)
     (fun v t f -> 1 + t + f)
 
+let compression_ratio t = (Repr.T.compressed_size t, Repr.T.uncompressed_size t)
+
 let eval =
   Interp.eval
 
 let eval_pipes =
   Interp.eval_pipes
+
+let to_dotfile t filename =
+  Out_channel.with_file filename ~f:(fun chan ->
+    Out_channel.output_string chan (Repr.T.to_dot t))

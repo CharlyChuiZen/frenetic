@@ -134,7 +134,7 @@ let rec token c = lexer
     | "vlanPcp" | "ethType" | "ipProto" | "tcpSrcPort" | "tcpDstPort"
     | "ethSrc" | "ethDst" | "ip4Src"| "ip4Dst" | "vswitch" | "vport"
     | "&&" | "||"  | "id"
-    | "drop" | "if" | "then" | "else" | "filter" ->
+    | "drop" | "if" | "then" | "else" | "filter" | "<>" ->
       KEYWORD (L.latin1_lexeme c.lexbuf)
   | _ -> illegal c
 

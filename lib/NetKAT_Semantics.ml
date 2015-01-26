@@ -135,7 +135,9 @@ let size (pol:policy) : int =
       | Filter pr -> f (size_pred pr + 1)
       | Mod(_) -> f 1
       | Union(pol1, pol2)
+      | DisjointUnion (pol1, pol2)
       | Seq(pol1, pol2) -> size pol1 (fun spol1 -> size pol2 (fun spol2 -> f (1 + spol1 + spol2)))
+
       | Star(pol) -> size pol (fun spol -> f (1 + spol))
       | Link(_,_,_,_) -> f 5
       | VLink(_,_,_,_) -> f 5 in
@@ -202,6 +204,12 @@ let rec eval (pkt : packet) (pol : policy) : PacketSet.t = match pol with
   | Seq (pol1, pol2) ->
     PacketSet.fold (eval pkt pol1) ~init:PacketSet.empty
       ~f:(fun set pkt' -> PacketSet.union set (eval pkt' pol2))
+  | DisjointUnion (pol1, pol2) ->
+    let pks1 = eval pkt pol1 in
+    if PacketSet.is_empty pks1 then
+      eval pkt pol2
+    else
+      pks1
   | Star pol ->
     let rec loop acc =
       let f set pkt' = PacketSet.union (eval pkt' pol) set in
@@ -210,7 +218,7 @@ let rec eval (pkt : packet) (pol : policy) : PacketSet.t = match pol with
       if PacketSet.equal acc acc'' then acc else loop acc'' in
       loop (PacketSet.singleton pkt)
   | Link(sw,pt,sw',pt') ->
-    PacketSet.empty (* JNF *)
+    PacketSet.empty (* TODO(JNF): yeah no *)
   | VLink(vsw,vpt,vsw',vpt') ->
     PacketSet.empty (* SJS *)
 
@@ -246,3 +254,27 @@ let eval_pipes (packet:packet) (pol:NetKAT_Types.policy)
       | Physical _ -> (            pi,             qu, pkt :: phy)
       | Pipe     p -> ((p, pkt) :: pi,             qu,        phy)
       | Query    q -> (            pi, (q, pkt) :: qu,        phy))
+
+
+let switches_of_policy (pol : policy) : switchId list =
+  let ids : (switchId, unit) Hashtbl.Poly.t = Hashtbl.Poly.create () in
+  let rec count_pred (pred : pred) (k : unit -> 'a) : 'a = match pred with
+    | Test (Switch sw) ->
+      Hashtbl.Poly.set ids ~key:sw ~data:();
+      k ()
+    | True | False | Test _ -> k ()
+    | And (a, b) | Or (a, b) ->
+      count_pred a (fun () -> count_pred b (fun () -> k ()))
+    | Neg a -> count_pred a k in
+  let rec count_pol (pol : policy) (k : unit -> 'a) : 'a = match pol with
+    | Filter a -> count_pred a k
+    | Mod _ -> k ()
+    | Union (p, q) | Seq (p, q) ->
+       count_pol p (fun () -> count_pol q (fun () -> k ()))
+    | Star p -> count_pol p k
+    | Link (sw1, _, sw2, _) ->
+      Hashtbl.Poly.set ids ~key:sw1 ~data:();
+      Hashtbl.Poly.set ids ~key:sw2 ~data:();
+      k () in
+  count_pol pol ident;
+  Hashtbl.Poly.keys ids

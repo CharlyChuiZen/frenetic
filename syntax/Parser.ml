@@ -18,6 +18,7 @@ let nk_int64 = Gram.Entry.mk "nk_int64"
 let nk_int32 = Gram.Entry.mk "nk_int32"
 let nk_int = Gram.Entry.mk "nk_int"
 let nk_ipv4 = Gram.Entry.mk "nk_ipv4"
+let nk_pol_disjoint_union = Gram.Entry.mk "nk_pol_disjoint_union"
 
 EXTEND Gram
 
@@ -154,8 +155,14 @@ EXTEND Gram
       <:expr<NetKAT_Types.Union ($p$, $q$)>>
   ]];
 
+  nk_pol_disjoint_union : [[
+     p = nk_pol_union -> <:expr<$p$>>
+   | p = nk_pol_disjoint_union; "<>"; q = nk_pol_union ->
+     <:expr<NetKAT_Types.DisjointUnion ($p$, $q$)>>
+  ]];
+
   nk_pol_cond : [[
-      p = nk_pol_union -> <:expr<$p$>>
+      p = nk_pol_disjoint_union -> <:expr<$p$>>
     | "if"; a = nk_pred;
       "then"; p = nk_pol_cond;
       "else"; q = nk_pol_cond ->
