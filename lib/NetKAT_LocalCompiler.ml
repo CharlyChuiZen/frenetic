@@ -624,34 +624,6 @@ module Repr = struct
       | T.Branch ((v, l), tru, fls) -> h (v,l) (f tru) (f fls) in
       f t
 
-  let seq t u =
-    (* Compute the sequential composition of [t] and [u] as a fold over [t]. In
-       the case of a leaf node, each sequence [seq] of modifications is used to
-       [restrict] the diagram for [u] and produce a new diagram [u'] that
-       assumes (but does not explicitly represent) the state of the packet after
-       passing through [t]'s modifications. [seq] and [u'] are then mulitplied as
-       decision diagrams, which will distribute [seq] to all the leaf nodes of
-       [u'] to produce the result. All such [seq]s in the [par] are then summed
-       together.
-
-       In the case of a branch node, the true and false branches are combined so
-       that packets satisfying [v] are handled by the true branch, and packets
-       not satisfying [v] are handled by the false branch. *)
-    match T.peek u with
-    | Some _ -> T.prod t u (* This is an optimization. If [u] is an
-                              [Action.Par.t], then it will compose with [t]
-                              regardless of however [t] modifies packets. None
-                              of the decision variables in [u] need to be
-                              removed because there are none. *)
-    | None   ->
-      dp_fold
-        (fun par ->
-          Action.Par.fold par ~init:(T.const Action.zero) ~f:(fun acc seq ->
-            let u' = T.restrict Action.Seq.(to_alist seq) u in
-            T.(sum (prod (const Action.Par.(singleton seq)) u') acc)))
-        (fun v t f -> cond v t f)
-      t
-
   let union t u =
     (* Compute the union of [t] and [u] by using the sum operation. This will
        appropriately combine actions for overlapping patterns. *)
@@ -659,6 +631,41 @@ module Repr = struct
       t
     else
       T.sum t u
+
+  let rec seq t u =
+    (* Compute the sequential composition of [t] and [u]. *)
+    let split_action (f, n) (par : Action.t) : Action.t list =
+      let withf, woutf =
+        Action.Par.partition_tf par ~f:(fun s -> Action.Seq.mem s f) in
+      let withfn, woutfn =
+        Action.Par.partition_tf withf ~f:(fun s -> (Action.Seq.find_exn s f) = n) in
+      [withfn; woutfn; woutf]
+    in
+    match T.unget u with
+    | Leaf a2 ->
+      begin match T.unget t with
+      | Leaf a1 -> T.mk_leaf (Action.prod a1 a2)
+      | Branch ((f,n), p, q) -> T.mk_branch (f,n) (seq p u) (seq q u)
+      end
+    | Branch ((f2,n2), p2, q2) ->
+      begin match T.unget t with
+      | Leaf a1 ->
+        let actions = split_action (f2,n2) a1 in
+        List.foldi actions ~f:(fun i acc a ->
+          if Action.Par.is_empty a then acc else
+          begin
+            let a = T.mk_leaf a in
+            let t = if i=0 then seq a p2
+              else if i=1 then seq a q2
+              else T.mk_branch (f2,n2) (seq a p2) (seq a q2) in
+            union acc t
+          end) ~init:(T.const Action.zero)
+      | Branch ((f1, n1), p1, q1) ->
+        dp_fold
+          (fun par -> seq (T.mk_leaf par) u)
+          (fun v t f -> cond v t f)
+        t
+      end
 
   let star' lhs t =
     (* Compute [star t] by iterating to a fixed point.
