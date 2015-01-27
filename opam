@@ -16,10 +16,10 @@ depends: [
   "fieldslib"
   "openflow"    {>= "0.5.0"}
   "sexplib"
-  "tdk"         {>= "0.1.0"}
   "ocamlgraph"  {>= "1.8.5"}
   "ulex"        {>= "1.1"}
   "ipaddr"      {>= "2.5.0"}
+  "yojson"      {>= "1.2.0"}
 ]
 depopts: [
   ( "async"

@@ -159,3 +159,4 @@ let mk () start_loc cs =
     Some (tok, current_loc c)
   in
   Stream.from next
+
