@@ -538,6 +538,17 @@ let generate_fabrics vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
 
 *)
 
+let rec encode_vlinks (vtopo : policy) =
+  match vtopo with
+  | Union (p, q) -> mk_union (encode_vlinks p) (encode_vlinks q)
+  | Seq (p, q) -> mk_seq (encode_vlinks p) (encode_vlinks q)
+  | Star p -> mk_star (encode_vlinks p)
+  | VLink (vsw1, vpt1, vsw2, vpt2) ->
+    mk_seq
+      (mk_filter (mk_and (Test (VSwitch vsw1)) (Test (VPort vpt1))))
+      (mk_seq (Mod (VSwitch vsw2)) (Mod (VPort vpt2)))
+  | _ -> vtopo
+
 let compile (vpolicy : policy) (vrel : pred)
   (vtopo : policy) (ving_pol : policy) (ving : pred) (veg : pred)
   (ptopo : policy)                     (ping : pred) (peg : pred) =
@@ -547,7 +558,7 @@ let compile (vpolicy : policy) (vrel : pred)
   let ing = mk_big_seq [Filter ping; ving_pol; Filter ving] in
   let eg = Filter (mk_and veg peg) in
   let p = mk_seq vpolicy fout in
-  let t = mk_seq vtopo fin in
+  let t = mk_seq (encode_vlinks vtopo) fin in
   (* ing; (p;t)^*; p  *)
   Printf.printf "ing: %s\n\n" (NetKAT_Pretty.string_of_policy ing);
   Printf.printf "fout: %s\n\n" (NetKAT_Pretty.string_of_policy fout);
