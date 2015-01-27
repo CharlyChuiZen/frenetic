@@ -9,7 +9,8 @@ module Field : sig
     = Switch
     | Vlan
     | VlanPcp
-    | Local of NetKAT_Types.varId
+    | VSwitch
+    | VPort
     | EthType
     | IPProto
     | EthSrc

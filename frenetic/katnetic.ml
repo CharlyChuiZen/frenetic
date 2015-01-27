@@ -300,7 +300,7 @@ let virtual_cmd : unit Cmdliner.Term.t * Cmdliner.Term.info =
   in
   let veg =
     let doc = "file containing the virtual eggress predicate" in
-    Arg.(required & (pos 5 (some file) None) & info [] ~docv:"VEGRESS" ~doc)
+    Arg.(required & (pos 5 (some file) None) & info [] ~docv:"VINGRESS" ~doc)
   in
   let ptopo =
     let doc = "file containing the virtual topology" in
