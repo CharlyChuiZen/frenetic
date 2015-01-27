@@ -66,7 +66,6 @@ end
 module GraphBuilder (Params : sig
   type switch with sexp
   type port with sexp
-  val with_loops : bool
   val locs_from_pred : pred -> (switch * port) list
   val links_from_topo : policy -> (switch * port * switch * port) list
 end) (Vlabel : Graph.Sig.COMPARABLE with type t = (Params.switch, Params.port) node) = struct
@@ -92,7 +91,6 @@ end) (Vlabel : Graph.Sig.COMPARABLE with type t = (Params.switch, Params.port) n
     let connect_switch_ports' v1 v2 g =
       match V.label v1, V.label v2 with
       | InPort (sw, _), OutPort (sw', _) when sw=sw' -> add_edge g v1 v2
-      | OutPort (sw, pt), InPort (sw', pt') when with_loops && sw=sw' && pt=pt' -> add_edge g v1 v2
       | _ -> g
 
     let connect_switch_ports g =
@@ -136,7 +134,6 @@ module G = struct
   module Virt = GraphBuilder (struct
     type switch = vswitchId with sexp
     type port = vportId with sexp
-    let with_loops = false
     let rec locs_from_pred pred =
       match pred with
       | And (Test (VSwitch vsw), Test (VPort vpt)) -> [(vsw, vpt)]
@@ -153,7 +150,6 @@ module G = struct
   module Phys = GraphBuilder (struct
     type switch = switchId with sexp
     type port = portId with sexp
-    let with_loops = true
     let rec locs_from_pred pred =
       match pred with
       | And (Test (Switch sw), Test (Location (Physical pt))) -> [(sw, pt)]
@@ -233,9 +229,16 @@ begin
        vrel (vsw, vpt) |> List.map (fun (sw, pt) -> G.Phys.V.create (OutPort (sw, pt)))
   in
 
+  let add_loop v g =
+    match G.Phys.V.label v with
+    | OutPort (sw,pt) -> G.Phys.add_edge g v (G.Phys.V.create (InPort (sw,pt)))
+    | _ -> g
+  in
+
   let pgraph_closure =
     let module Op = Graph.Oper.P(G.Phys) in
-    Op.transitive_closure ~reflexive:false pgraph
+    let closure = Op.transitive_closure ~reflexive:false pgraph in
+    G.Phys.fold_vertex add_loop closure closure
   in
 
   let virt_ing =
@@ -420,12 +423,10 @@ let generate_fabrics vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
   let module WEIGHT = struct
     type edge = G.Phys.E.t
     type t = int
-    (* SJS: ideally, we should give loops weight 0, but this requires adding appropriate labels
-       to the edges *)
     let weight e =
       match unwrap_e e with
       | InPort _, OutPort _ -> 0
-      | OutPort (sw, _), InPort (sw', _) -> if sw=sw' then 0 else 1
+      | OutPort _, InPort _ -> 1
       | _, _ -> assert false
     let compare = compare
     let add x y = x + y
@@ -435,7 +436,14 @@ let generate_fabrics vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
   let module Dijkstra = Graph.Path.Dijkstra(G.Phys)(WEIGHT) in
   let dist_tbl = Tbl.create () in
 
+  let is_loop pv1 pv2 =
+    match pv1, pv2 with
+    | OutPort (sw, _), InPort (sw', _) -> sw = sw'
+    | _ -> false
+  in
+
   let get_path_and_distance pv1 pv2 =
+    if is_loop pv1 pv2 then ([],0) else
     match Tbl.find dist_tbl (pv1, pv2) with
     | Some (path, dist) -> (path, dist)
     | None -> begin
@@ -560,9 +568,9 @@ let compile (vpolicy : policy) (vrel : pred)
   let p = mk_seq vpolicy fout in
   let t = mk_seq (encode_vlinks vtopo) fin in
   (* ing; (p;t)^*; p  *)
-  Printf.printf "ing: %s\n\n" (NetKAT_Pretty.string_of_policy ing);
-  Printf.printf "fout: %s\n\n" (NetKAT_Pretty.string_of_policy fout);
-  Printf.printf "fin: %s\n\n" (NetKAT_Pretty.string_of_policy fin);
-  Printf.printf "vpolicy: %s\n\n" (NetKAT_Pretty.string_of_policy vpolicy);
-  Printf.printf "vtopo: %s\n\n" (NetKAT_Pretty.string_of_policy vtopo);
-  mk_big_seq [ing; mk_star (mk_seq p t); p]
+  Printf.printf "ing: %s\n\n%!" (NetKAT_Pretty.string_of_policy ing);
+  Printf.printf "fout: %s\n\n%!" (NetKAT_Pretty.string_of_policy fout);
+  Printf.printf "fin: %s\n\n%!" (NetKAT_Pretty.string_of_policy fin);
+  Printf.printf "vpolicy: %s\n\n%!" (NetKAT_Pretty.string_of_policy vpolicy);
+  Printf.printf "vtopo: %s\n\n%!" (NetKAT_Pretty.string_of_policy vtopo);
+  mk_big_seq [ing; mk_star (mk_seq p t); p; eg]

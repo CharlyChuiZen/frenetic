@@ -39,6 +39,7 @@ let rec link_free p =
   | Union (q,r) | Seq (q,r) -> link_free q && link_free r
   | Star q -> link_free q
   | Link _ -> false
+  | VLink _ -> failwith "not a global policy"
 
 let loc_of_hv hv =
   match hv with
@@ -51,6 +52,7 @@ let rec loc_of_pred pred =
   | And (a,b) -> mk_and (loc_of_pred a) (loc_of_pred b)
   | Or (a,b) -> mk_or (loc_of_pred a) (loc_of_pred b)
   | Neg a -> mk_not (loc_of_pred a)
+  | True | False -> pred
 
 
 (** Conceptually, the CPS translation transforms a given global program (that may contain links)
