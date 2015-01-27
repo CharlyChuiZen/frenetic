@@ -39,7 +39,6 @@ let rec link_free p =
   | Union (q,r) | Seq (q,r) -> link_free q && link_free r
   | Star q -> link_free q
   | Link _ -> false
-  | VLink _ -> failwith "not a global policy."
 
 let loc_of_hv hv =
   match hv with
