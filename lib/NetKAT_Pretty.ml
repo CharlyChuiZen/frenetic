@@ -27,7 +27,6 @@ module Formatting = struct
     | TCPDstPort(n) -> fprintf fmt "@[tcpDstPort %s %u@]" asgn n
     | VSwitch(n) -> fprintf fmt "@[vswitch %s %Lu@]" asgn n
     | VPort(n) -> fprintf fmt "@[vport %s %Lu@]" asgn n
-    | Local(s,n) -> fprintf fmt "@[local<%s> %s %Lu@]" s asgn n
 
   let rec pred (cxt : predicate_context) (fmt : formatter) (pr : pred) : unit = 
     match pr with

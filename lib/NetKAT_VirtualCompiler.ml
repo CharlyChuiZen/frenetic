@@ -17,36 +17,6 @@ let minimize xs obj =
   in
   List.fold_left f None xs
 
-(* translate virtual fields to local fields *)
-let rec devirtualize_pred pred =
-  match pred with
-  | True | False -> pred
-  | Test (VSwitch vsw) -> Test (Local ("vsw", vsw))
-  | Test (VPort vpt) ->  Test (Local ("vpt", vpt))
-  | Test _ -> pred
-  | And (a, b) -> And (devirtualize_pred a, devirtualize_pred b)
-  | Or (a, b) -> Or (devirtualize_pred a, devirtualize_pred b)
-  | Neg a -> Neg (devirtualize_pred a)
-
-let rec devirtualize_pol pol =
-  match pol with
-  | Filter pred -> Filter (devirtualize_pred pred)
-  | Mod (VSwitch vsw) -> Mod (Local ("vsw", vsw))
-  | Mod (VPort vpt) ->  Mod (Local ("vpt", vpt))
-  | Mod _ -> pol
-  | Union (p, q) -> Union (devirtualize_pol p, devirtualize_pol q)
-  | Seq (p, q) -> Seq (devirtualize_pol p, devirtualize_pol q)
-  | Star p -> Star (devirtualize_pol p)
-  | Link _ -> pol
-  | VLink (vsw1, vpt1, vsw2, vpt2) ->
-    let t1 = Test (VSwitch vsw1) in
-    let t2 = Test (VPort vpt1) in
-    let m1 = Mod (VSwitch vsw2) in
-    let m2 = Mod (VPort vpt2) in
-    let pol' = mk_big_seq [Filter (And (t1, t2)); m1; m2] in
-    devirtualize_pol pol'
-
-
 (* physical location *)
 type ploc = switchId * portId
 
@@ -584,5 +554,4 @@ let compile (vpolicy : policy) (vrel : pred)
   Printf.printf "fin: %s\n\n" (NetKAT_Pretty.string_of_policy fin);
   Printf.printf "vpolicy: %s\n\n" (NetKAT_Pretty.string_of_policy vpolicy);
   Printf.printf "vtopo: %s\n\n" (NetKAT_Pretty.string_of_policy vtopo);
-  devirtualize_pol (mk_big_seq [ing; mk_star (mk_seq p t); p; eg])
-
+  mk_big_seq [ing; mk_star (mk_seq p t); p]

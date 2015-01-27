@@ -13,7 +13,6 @@ module Field = struct
     = Switch
     | Vlan
     | VlanPcp
-    | Local of NetKAT_Types.varId
     | EthType
     | IPProto
     | EthSrc
@@ -38,7 +37,6 @@ module Field = struct
     | EthDst -> "EthDst"
     | Vlan -> "Vlan"
     | VlanPcp -> "VlanPcp"
-    | Local id -> "Local<" ^ id ^ ">"
     | EthType -> "EthType"
     | IPProto -> "IPProto"
     | IP4Src -> "IP4Src"
@@ -341,7 +339,7 @@ module Pattern = struct
       (Field.IP4Dst, Value.(Mask(Int64.of_int32 nwAddr, 32 + (Int32.to_int_exn mask))))
     | TCPSrcPort(tpPort) -> (Field.TCPSrcPort, Value.of_int tpPort)
     | TCPDstPort(tpPort) -> (Field.TCPDstPort, Value.of_int tpPort)
-    | Local (varId, value) -> (Field.Local varId, Value.of_int64 value)
+    | VSwitch _ | VPort _ -> raise Non_local
 
   let to_hv (f, v) =
     let open Field in
@@ -363,7 +361,6 @@ module Pattern = struct
     | (IP4Dst  , Const nwAddr) -> NetKAT.(IP4Dst(to_int32 nwAddr, 32l))
     | (TCPSrcPort, Const tpPort) -> NetKAT.(TCPSrcPort(to_int tpPort))
     | (TCPDstPort, Const tpPort) -> NetKAT.(TCPDstPort(to_int tpPort))
-    | (Local varId, Const value) -> NetKAT.Local (varId, value)
     | _, _ -> raise (FieldValue_mismatch(f, v))
 
   let to_pred (f, v) =
@@ -405,7 +402,6 @@ module Pattern = struct
       { pat with SDN.Pattern.tpSrc = Some(to_int tpPort) }
     | (TCPDstPort, Const tpPort) -> fun pat ->
       { pat with SDN.Pattern.tpDst = Some(to_int tpPort) }
-    | (Local _, _) -> raise Non_local
     | _, _ -> raise (FieldValue_mismatch(f, v))
 
 end
@@ -513,7 +509,6 @@ module Action = struct
         | IP4Dst  , Const nwAddr   -> SDN.(Modify(SetIP4Dst(to_int32 nwAddr))) :: acc
         | TCPSrcPort, Const tpPort -> SDN.(Modify(SetTCPSrcPort(to_int tpPort))) :: acc
         | TCPDstPort, Const tpPort -> SDN.(Modify(SetTCPDstPort(to_int tpPort))) :: acc
-        | Local _, _ -> acc
         | _, _ -> raise (FieldValue_mismatch(key, data))
       ) :: acc)
 
