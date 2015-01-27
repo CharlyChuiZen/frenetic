@@ -13,6 +13,8 @@ module Field = struct
     = Switch
     | Vlan
     | VlanPcp
+    | VSwitch
+    | VPort
     | EthType
     | IPProto
     | EthSrc
@@ -32,24 +34,26 @@ module Field = struct
 
   let to_string = function
     | Switch -> "Switch"
-    | Location -> "Location"
-    | EthSrc -> "EthSrc"
-    | EthDst -> "EthDst"
     | Vlan -> "Vlan"
     | VlanPcp -> "VlanPcp"
+    | VSwitch -> "VSwitch"
+    | VPort -> "VPort"
     | EthType -> "EthType"
     | IPProto -> "IPProto"
+    | EthSrc -> "EthSrc"
+    | EthDst -> "EthDst"
     | IP4Src -> "IP4Src"
     | IP4Dst -> "IP4Dst"
     | TCPSrcPort -> "TCPSrcPort"
     | TCPDstPort -> "TCPDstPort"
+    | Location -> "Location"
 
-  let num_fields = 12
+  let num_fields = 14
 
   (* Ensure that these are in the same order in which the variants appear. *)
   let all_fields =
-    [ Switch; Vlan; VlanPcp; EthType; IPProto; EthSrc; EthDst;
-      IP4Src; IP4Dst; TCPSrcPort; TCPDstPort; Location ]
+    [ Switch; Vlan; VlanPcp; VSwitch; VPort; EthType; IPProto; EthSrc; EthDst;
+      IP4Src; IP4Dst; TCPSrcPort; TCPDstPort; Location; ]
 
   let is_valid_order (lst : t list) : bool =
     List.length lst = num_fields &&
@@ -80,6 +84,8 @@ module Field = struct
     | NetKAT_Types.EthDst _ -> EthDst
     | NetKAT_Types.Vlan _ -> Vlan
     | NetKAT_Types.VlanPcp _ -> VlanPcp
+    | NetKAT_Types.VSwitch _ -> VSwitch
+    | NetKAT_Types.VPort _ -> VPort
     | NetKAT_Types.EthType _ -> EthType
     | NetKAT_Types.IPProto _ -> IPProto
     | NetKAT_Types.IP4Src _ -> IP4Src
@@ -331,6 +337,8 @@ module Pattern = struct
     | EthDst(dlAddr) -> (Field.EthDst, Value.(Const dlAddr))
     | Vlan(vlan) -> (Field.Vlan, Value.of_int vlan)
     | VlanPcp(vlanPcp) -> (Field.VlanPcp, Value.of_int vlanPcp)
+    | VSwitch(vsw_id) -> (Field.VSwitch, Value.(Const vsw_id))
+    | VPort(vpt) ->  (Field.VPort, Value.(Const vpt))
     | EthType(dlTyp) -> (Field.EthType, Value.of_int dlTyp)
     | IPProto(nwProto) -> (Field.IPProto, Value.of_int nwProto)
     | IP4Src(nwAddr, mask) ->
@@ -339,7 +347,6 @@ module Pattern = struct
       (Field.IP4Dst, Value.(Mask(Int64.of_int32 nwAddr, 32 + (Int32.to_int_exn mask))))
     | TCPSrcPort(tpPort) -> (Field.TCPSrcPort, Value.of_int tpPort)
     | TCPDstPort(tpPort) -> (Field.TCPDstPort, Value.of_int tpPort)
-    | VSwitch _ | VPort _ -> raise Non_local
 
   let to_hv (f, v) =
     let open Field in
@@ -353,6 +360,8 @@ module Pattern = struct
     | (EthDst  , Const dlAddr) -> NetKAT.(EthDst dlAddr)
     | (Vlan    , Const vlan) -> NetKAT.(Vlan(to_int vlan))
     | (VlanPcp , Const vlanPcp) -> NetKAT.(VlanPcp (to_int vlanPcp))
+    | (VSwitch  , Const vsw) -> NetKAT.VSwitch vsw
+    | (VPort  , Const vpt) -> NetKAT.VPort vpt
     | (EthType , Const dlTyp) -> NetKAT.(EthType (to_int dlTyp))
     | (IPProto , Const nwProto) -> NetKAT.(IPProto (to_int nwProto))
     | (IP4Src  , Mask(nwAddr, mask)) -> NetKAT.(IP4Src(to_int32 nwAddr, Int32.of_int_exn (mask - 32)))
@@ -372,8 +381,8 @@ module Pattern = struct
     let open Field in
     let open Value in
     match f, v with
-    | (Switch, Const _) -> assert false
-    | (Switch, v)       -> raise (FieldValue_mismatch(Switch, v))
+    | (Switch, Const _) | (VSwitch, Const _) | (VPort, Const _) -> 
+      assert false
     | (Location, Const p) -> fun pat ->
       { pat with SDN.Pattern.inPort = Some(to_int32 p) }
     | (EthSrc, Const dlAddr) -> fun pat ->
@@ -501,6 +510,7 @@ module Action = struct
         | EthDst  , Const dlAddr  -> SDN.(Modify(SetEthDst dlAddr)) :: acc
         | Vlan    , Const vlan    -> SDN.(Modify(SetVlan(Some(to_int vlan)))) :: acc
         | VlanPcp , Const vlanPcp -> SDN.(Modify(SetVlanPcp (to_int vlanPcp))) :: acc
+        | VSwitch, Const _ | VPort, Const _ -> assert false
         | EthType , Const dlTyp   -> SDN.(Modify(SetEthTyp (to_int dlTyp))) :: acc
         | IPProto , Const nwProto -> SDN.(Modify(SetIPProto (to_int nwProto))) :: acc
         | IP4Src  , Mask (nwAddr, 64)
@@ -752,6 +762,17 @@ let to_table sw_id t =
     ; hard_timeout = Permanent
     }
   in
+  let remove_local_fields = 
+    Repr.T.fold
+      (fun r -> Repr.T.mk_leaf (Action.Par.map r ~f:(fun s -> Action.Seq.filter s ~f:(fun ~key ~data ->
+        match key with
+        | VPort | VSwitch -> false
+        | _ -> true))))
+      (fun v t f ->
+        match v with
+        | VSwitch, _ | VPort, _ -> failwith "uninitialized local field"
+        | _, _ -> Repr.T.mk_branch v t f) in
+  let t = remove_local_fields t in
   let ft = Repr.T.fold
     (fun r -> [(SDN.Pattern.match_all, None, r)])
     (fun v t f ->
