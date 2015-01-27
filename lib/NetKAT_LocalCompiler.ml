@@ -9,7 +9,6 @@ type order
     | `Static of Field.t list
     | `Heuristic ]
 
-
 module Repr = struct
 
   type t = T.t
@@ -34,9 +33,6 @@ module Repr = struct
   let dp_fold (g : Action.t -> T.t)
               (h : Field.t * Value.t -> T.t -> T.t -> T.t)
               (t : T.t) : T.t =
-(*     let g' = Memo.general g in
-    let h' = Memo.general (fun (x,y,z) -> h x y z) in
- *)
      let tbl = Hashtbl.Poly.create () in
      let rec f t =
        Hashtbl.Poly.find_or_add tbl t ~default:(fun () -> f' t)
@@ -121,12 +117,6 @@ module Repr = struct
     | Seq (p, q) ->
       of_policy_k p (fun p' ->
         of_policy_k q (fun q' ->
-(*           (if NetKAT_Semantics.(size p > 30 || size q > 30) then
-            printf ">>> SEQ <<<<\n%s\n>>>> WITH <<<<<\n%s\n%!"
-              (NetKAT_Pretty.string_of_policy p)
-              (NetKAT_Pretty.string_of_policy q)
-          else
-            ()); *)
           k (seq p' q')))
     | Star p ->
       of_policy_k p (fun p' ->
@@ -135,8 +125,6 @@ module Repr = struct
       of_policy_k
         (Seq (Filter (And (Test (Switch sw1), Test (Location (Physical pt1)))),
               Seq (Mod (Switch sw2), Mod (Location (Physical pt2))))) k
-
-
 
   let rec of_policy p = of_policy_k p ident
 
