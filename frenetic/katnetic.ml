@@ -96,21 +96,23 @@ module Virtual = struct
       NetKAT_VirtualCompiler.compile vpolicy vrel vtopo ving_pol ving veg ptopo ping peg in
     let local_physical_pol =
       NetKAT_GlobalCompiler.compile ping peg global_physical_pol in
-    let compiled_physical_pol = NetKAT_LocalCompiler.compile local_physical_pol in
-    let switches = NetKAT_Misc.switches_of_policy
-      (Optimize.mk_seq (NetKAT_Types.Filter ping) global_physical_pol) in
-    let tables =
-      List.map (fun sw -> (sw, NetKAT_LocalCompiler.to_table sw compiled_physical_pol)) switches in
     let print_table (sw, t) =
       Format.fprintf fmt "[global] Flowtable for Switch %Ld:@\n@[%a@]@\n@\n"
         sw
         SDN_Types.format_flowTable t in
+    let _ = begin
     Format.fprintf fmt "@\n[global] Parsed: @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @\n@\n"
       vpolicy_file vrel_file vtopo_file ving_pol_file ving_file veg_file ptopo_file ping_file peg_file;
     Format.fprintf fmt "[global] Global Policy:@\n@[%a@]@\n@\n"
       NetKAT_Pretty.format_policy global_physical_pol;
     Format.fprintf fmt "[global] CPS Policy:@\n@[%a@]@\n@\n"
-      NetKAT_Pretty.format_policy local_physical_pol;
+      NetKAT_Pretty.format_policy local_physical_pol
+    end in
+    let compiled_physical_pol = NetKAT_LocalCompiler.compile local_physical_pol in
+    let switches = NetKAT_Misc.switches_of_policy
+      (Optimize.mk_seq (NetKAT_Types.Filter ping) global_physical_pol) in
+    let tables =
+      List.map (fun sw -> (sw, NetKAT_LocalCompiler.to_table sw compiled_physical_pol)) switches in
     Format.fprintf fmt "[global] Localized CPS Policies:@\n@\n";
     List.iter print_table tables;
     ()
