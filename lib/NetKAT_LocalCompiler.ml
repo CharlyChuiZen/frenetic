@@ -116,7 +116,7 @@ module Repr = struct
                           k (union p' q')))
     | Seq (p, q) ->
       of_policy_k p (fun p' ->
-        if T.equal p' (T.const Action.zero) then T.const Action.zero
+        if T.equal p' (T.const Action.zero) then k (T.const Action.zero)
         else of_policy_k q (fun q' ->
           k (seq p' q')))
     | Star p ->
