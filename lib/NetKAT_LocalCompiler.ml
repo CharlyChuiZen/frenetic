@@ -116,7 +116,8 @@ module Repr = struct
                           k (union p' q')))
     | Seq (p, q) ->
       of_policy_k p (fun p' ->
-        of_policy_k q (fun q' ->
+        if T.equal p' (T.const Action.zero) then T.const Action.zero
+        else of_policy_k q (fun q' ->
           k (seq p' q')))
     | Star p ->
       of_policy_k p (fun p' ->
@@ -226,8 +227,8 @@ let mk_branch_or_leaf test t f =
   | Some t -> Some (T.mk_branch test t f)
 
 let opt_to_table sw_id t =
-  let t = 
-    T.(restrict [(Field.Switch, Value.Const sw_id)] t) 
+  let t =
+    T.(restrict [(Field.Switch, Value.Const sw_id)] t)
     |> remove_local_fields
   in
   let rec next_table_row tests mk_rest t =
