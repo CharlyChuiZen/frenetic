@@ -386,13 +386,28 @@ let rec policy_of_path path =
   | [] -> id
   | _ -> assert false
 
-let fabric_atom_of_prod_edge path_oracle v1 v2 =
+let rec print_path path out_channel =
+  match path with
+  | (OutPort (sw1, _), (InPort (sw2, _))) :: path' ->
+     if sw1 = sw2 then 
+       print_path path' out_channel
+     else
+       (Printf.fprintf out_channel "%Lu-%Lu" sw1 sw2;
+       print_path path' out_channel)
+  | (InPort (sw, _), (OutPort (sw', _))) :: path' ->
+    Printf.fprintf out_channel " ";
+    print_path path' out_channel
+  | [] -> Printf.fprintf out_channel "\n%!";
+  | _ -> assert false
+
+let fabric_atom_of_prod_edge ?(record_paths=None) path_oracle v1 v2 =
   match G.Prod.V.label v1, G.Prod.V.label v2 with
   | ConsistentOut _, InconsistentIn _ | ConsistentIn _, InconsistentOut _ -> `None
   | (InconsistentOut (vv, pv1) as l), ConsistentOut (vv', pv2)
   | (InconsistentIn (vv, pv1) as l), ConsistentIn (vv', pv2) ->
      assert (vv = vv');
      let path = path_oracle pv1 pv2 in
+     let _ = Core.Std.Option.(record_paths >>| print_path path) in
      let fabric = mk_big_seq [match_vloc' vv; match_ploc' pv1; policy_of_path path; set_vloc' vv] in
      begin match l with
        | InconsistentOut _ -> `Out fabric
@@ -401,18 +416,21 @@ let fabric_atom_of_prod_edge path_oracle v1 v2 =
      end
   | _ -> assert false
 
-let fabric_of_fabric_graph g ing path_oracle =
+let fabric_of_fabric_graph ?(record_paths=None) g ing path_oracle =
   if List.for_all (fun v -> G.Prod.mem_vertex g v) ing then
+    let record_paths = Core.Std.Option.(record_paths >>| open_out) in
     let f v1 v2 ((fout, fin) as fs) =
-      match fabric_atom_of_prod_edge path_oracle v1 v2 with
+      match fabric_atom_of_prod_edge ~record_paths path_oracle v1 v2 with
       | `None -> fs
       | `Out f -> (f::fout, fin)
       | `In f -> (fout, f::fin) in
-    G.Prod.fold_edges f g ([], [])
+    let fabric = G.Prod.fold_edges f g ([], []) in
+    let _ = Core.Std.Option.(record_paths >>| close_out) in
+    fabric
   else
     failwith "global compiler: specification allows for no valid fabric"
 
-let generate_fabrics vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
+let generate_fabrics ?(record_paths=None) vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
   let vgraph = G.Virt.make v_ing v_eg v_topo in
   let pgraph = G.Phys.make p_ing p_eg p_topo in
   let prod_ing, prod_graph = make_product_graph vgraph pgraph v_ing vrel in
@@ -469,7 +487,7 @@ let generate_fabrics vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
 
   let pruned_graph = lazy (prune_product_graph prod_graph) in
   let fabric_graph = lazy (fabric_graph_of_pruned (Lazy.force pruned_graph) prod_ing cost) in
-  let fabric = lazy (fabric_of_fabric_graph (Lazy.force fabric_graph) prod_ing path_oracle) in
+  let fabric = lazy (fabric_of_fabric_graph ~record_paths (Lazy.force fabric_graph) prod_ing path_oracle) in
   let vg_file = "vg.dot" in
   let pg_file = "pg.dot" in
   let g_raw_file = "g_raw.dot" in
@@ -557,10 +575,10 @@ let rec encode_vlinks (vtopo : policy) =
       (mk_seq (Mod (VSwitch vsw2)) (Mod (VPort vpt2)))
   | _ -> vtopo
 
-let compile_and_yield_fabrics (vpolicy : policy) (vrel : pred)
+let compile ?(record_paths=None) (vpolicy : policy) (vrel : pred)
   (vtopo : policy) (ving_pol : policy) (ving : pred) (veg : pred)
   (ptopo : policy)                     (ping : pred) (peg : pred) =
-  let (fout_set, fin_set) = generate_fabrics vrel vtopo ving veg ptopo ping peg in
+  let (fout_set, fin_set) = generate_fabrics ~record_paths vrel vtopo ving veg ptopo ping peg in
   let fout = mk_big_union fout_set in
   let fin = mk_big_union fin_set in
   let ing = mk_big_seq [Filter ping; ving_pol; Filter ving] in
@@ -573,12 +591,4 @@ let compile_and_yield_fabrics (vpolicy : policy) (vrel : pred)
   Printf.printf "fin: %s\n\n%!" (NetKAT_Pretty.string_of_policy fin);
   Printf.printf "vpolicy: %s\n\n%!" (NetKAT_Pretty.string_of_policy vpolicy);
   Printf.printf "vtopo: %s\n\n%!" (NetKAT_Pretty.string_of_policy vtopo); *)
-  let output = mk_big_seq [ing; mk_star (mk_seq p t); p; eg] in
-  (output, fout, fin)
-
-let compile (vpolicy : policy) (vrel : pred)
-  (vtopo : policy) (ving_pol : policy) (ving : pred) (veg : pred)
-  (ptopo : policy)                     (ping : pred) (peg : pred) =
-  let (pol, _, _) = 
-    compile_and_yield_fabrics vpolicy vrel vtopo ving_pol ving veg ptopo ping peg in
-  pol
+  mk_big_seq [ing; mk_star (mk_seq p t); p; eg]
