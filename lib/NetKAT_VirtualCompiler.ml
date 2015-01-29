@@ -568,11 +568,11 @@ let compile_and_yield_fabrics (vpolicy : policy) (vrel : pred)
   let p = mk_seq vpolicy fout in
   let t = mk_seq (encode_vlinks vtopo) fin in
   (* ing; (p;t)^*; p  *)
-  Printf.printf "ing: %s\n\n%!" (NetKAT_Pretty.string_of_policy ing);
+  (* Printf.printf "ing: %s\n\n%!" (NetKAT_Pretty.string_of_policy ing);
   Printf.printf "fout: %s\n\n%!" (NetKAT_Pretty.string_of_policy fout);
   Printf.printf "fin: %s\n\n%!" (NetKAT_Pretty.string_of_policy fin);
   Printf.printf "vpolicy: %s\n\n%!" (NetKAT_Pretty.string_of_policy vpolicy);
-  Printf.printf "vtopo: %s\n\n%!" (NetKAT_Pretty.string_of_policy vtopo);
+  Printf.printf "vtopo: %s\n\n%!" (NetKAT_Pretty.string_of_policy vtopo); *)
   let output = mk_big_seq [ing; mk_star (mk_seq p t); p; eg] in
   (output, fout, fin)
 
