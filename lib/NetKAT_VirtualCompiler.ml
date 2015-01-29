@@ -557,7 +557,7 @@ let rec encode_vlinks (vtopo : policy) =
       (mk_seq (Mod (VSwitch vsw2)) (Mod (VPort vpt2)))
   | _ -> vtopo
 
-let compile (vpolicy : policy) (vrel : pred)
+let compile_and_yield_fabric (vpolicy : policy) (vrel : pred)
   (vtopo : policy) (ving_pol : policy) (ving : pred) (veg : pred)
   (ptopo : policy)                     (ping : pred) (peg : pred) =
   let (fout_set, fin_set) = generate_fabrics vrel vtopo ving veg ptopo ping peg in
@@ -573,4 +573,12 @@ let compile (vpolicy : policy) (vrel : pred)
   Printf.printf "fin: %s\n\n%!" (NetKAT_Pretty.string_of_policy fin);
   Printf.printf "vpolicy: %s\n\n%!" (NetKAT_Pretty.string_of_policy vpolicy);
   Printf.printf "vtopo: %s\n\n%!" (NetKAT_Pretty.string_of_policy vtopo);
-  mk_big_seq [ing; mk_star (mk_seq p t); p; eg]
+  let output = mk_big_seq [ing; mk_star (mk_seq p t); p; eg] in
+  (output, fout, fin)
+
+let compile (vpolicy : policy) (vrel : pred)
+  (vtopo : policy) (ving_pol : policy) (ving : pred) (veg : pred)
+  (ptopo : policy)                     (ping : pred) (peg : pred) =
+  let (pol, _, _) = 
+    compile_and_yield_fabric vpolicy vrel vtopo ving_pol ving veg ptopo ping peg in
+  pol
