@@ -430,7 +430,7 @@ let fabric_of_fabric_graph ?(record_paths=None) g ing path_oracle =
   else
     failwith "global compiler: specification allows for no valid fabric"
 
-let generate_fabrics ?(record_paths=None) vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
+let generate_fabrics ?(log=true) ?(record_paths=None) vrel v_topo v_ing v_eg p_topo p_ing p_eg  =
   let vgraph = G.Virt.make v_ing v_eg v_topo in
   let pgraph = G.Phys.make p_ing p_eg p_topo in
   let prod_ing, prod_graph = make_product_graph vgraph pgraph v_ing vrel in
@@ -499,26 +499,28 @@ let generate_fabrics ?(record_paths=None) vrel v_topo v_ing v_eg p_topo p_ing p_
   let g_pruned_ch = open_out g_pruned_file in
   let g_fabric_ch = open_out g_fabric_file in
   begin
-    Printf.printf "|V(vgraph)|: %i\n" (G.Virt.nb_vertex vgraph);
-    Printf.printf "|E(vgraph)|: %i\n" (G.Virt.nb_edges vgraph);
-    G.Virt.Dot.output_graph vg_ch vgraph;
-    close_out vg_ch;
-    Printf.printf "|V(pgraph)|: %i\n" (G.Phys.nb_vertex pgraph);
-    Printf.printf "|E(pgraph)|: %i\n" (G.Phys.nb_edges pgraph);
-    G.Phys.Dot.output_graph pg_ch pgraph;
-    close_out pg_ch;
-    Printf.printf "|V(prod_graph)|: %i\n" (G.Prod.nb_vertex prod_graph);
-    Printf.printf "|E(prod_graph)|: %i\n" (G.Prod.nb_edges prod_graph);
-    G.Prod.Dot.output_graph g_raw_ch prod_graph;
-    close_out g_raw_ch;
-    Printf.printf "|V(pruned_graph)|: %i\n" (G.Prod.nb_vertex (Lazy.force pruned_graph));
-    Printf.printf "|E(pruned_graph)|: %i\n" (G.Prod.nb_edges (Lazy.force pruned_graph));
-    G.Prod.Dot.output_graph g_pruned_ch (Lazy.force pruned_graph);
-    close_out g_pruned_ch;
-    Printf.printf "|V(fabric_graph)|: %i\n" (G.Prod.nb_vertex (Lazy.force fabric_graph));
-    Printf.printf "|E(fabric_graph)|: %i\n" (G.Prod.nb_edges (Lazy.force fabric_graph));
-    G.Prod.Dot.output_graph g_fabric_ch (Lazy.force fabric_graph);
-    close_out g_fabric_ch;
+    if log then (
+      Printf.printf "|V(vgraph)|: %i\n" (G.Virt.nb_vertex vgraph);
+      Printf.printf "|E(vgraph)|: %i\n" (G.Virt.nb_edges vgraph);
+      G.Virt.Dot.output_graph vg_ch vgraph;
+      close_out vg_ch;
+      Printf.printf "|V(pgraph)|: %i\n" (G.Phys.nb_vertex pgraph);
+      Printf.printf "|E(pgraph)|: %i\n" (G.Phys.nb_edges pgraph);
+      G.Phys.Dot.output_graph pg_ch pgraph;
+      close_out pg_ch;
+      Printf.printf "|V(prod_graph)|: %i\n" (G.Prod.nb_vertex prod_graph);
+      Printf.printf "|E(prod_graph)|: %i\n" (G.Prod.nb_edges prod_graph);
+      G.Prod.Dot.output_graph g_raw_ch prod_graph;
+      close_out g_raw_ch;
+      Printf.printf "|V(pruned_graph)|: %i\n" (G.Prod.nb_vertex (Lazy.force pruned_graph));
+      Printf.printf "|E(pruned_graph)|: %i\n" (G.Prod.nb_edges (Lazy.force pruned_graph));
+      G.Prod.Dot.output_graph g_pruned_ch (Lazy.force pruned_graph);
+      close_out g_pruned_ch;
+      Printf.printf "|V(fabric_graph)|: %i\n" (G.Prod.nb_vertex (Lazy.force fabric_graph));
+      Printf.printf "|E(fabric_graph)|: %i\n" (G.Prod.nb_edges (Lazy.force fabric_graph));
+      G.Prod.Dot.output_graph g_fabric_ch (Lazy.force fabric_graph);
+      close_out g_fabric_ch)
+    else ();
     Lazy.force fabric
   end
 
@@ -575,10 +577,10 @@ let rec encode_vlinks (vtopo : policy) =
       (mk_seq (Mod (VSwitch vsw2)) (Mod (VPort vpt2)))
   | _ -> vtopo
 
-let compile ?(record_paths=None) (vpolicy : policy) (vrel : pred)
+let compile ?(log=true) ?(record_paths=None) (vpolicy : policy) (vrel : pred)
   (vtopo : policy) (ving_pol : policy) (ving : pred) (veg : pred)
   (ptopo : policy)                     (ping : pred) (peg : pred) =
-  let (fout_set, fin_set) = generate_fabrics ~record_paths vrel vtopo ving veg ptopo ping peg in
+  let (fout_set, fin_set) = generate_fabrics ~log ~record_paths vrel vtopo ving veg ptopo ping peg in
   let fout = mk_big_union fout_set in
   let fin = mk_big_union fin_set in
   let ing = mk_big_seq [Filter ping; ving_pol; Filter ving] in
