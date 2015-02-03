@@ -60,6 +60,64 @@ module Global = struct
     ()
 end
 
+module Virtual = struct
+  let main vpolicy_file vrel_file vtopo_file ving_pol_file ving_file veg_file
+                                  ptopo_file               ping_file peg_file =
+    let fmt = Format.formatter_of_out_channel stderr in
+    let () = Format.pp_set_margin fmt 120 in
+    let vpolicy =
+      Core.Std.In_channel.with_file vpolicy_file ~f:(fun chan ->
+        NetKAT_Parser.program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let vrel =
+      Core.Std.In_channel.with_file vrel_file ~f:(fun chan ->
+        NetKAT_Parser.pred_program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let vtopo =
+      Core.Std.In_channel.with_file vtopo_file ~f:(fun chan ->
+        NetKAT_Parser.program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let ving_pol =
+      Core.Std.In_channel.with_file ving_pol_file ~f:(fun chan ->
+        NetKAT_Parser.program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let ving =
+      Core.Std.In_channel.with_file ving_file ~f:(fun chan ->
+        NetKAT_Parser.pred_program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let veg =
+      Core.Std.In_channel.with_file veg_file ~f:(fun chan ->
+        NetKAT_Parser.pred_program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let ptopo =
+      Core.Std.In_channel.with_file ptopo_file ~f:(fun chan ->
+        NetKAT_Parser.program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let ping =
+      Core.Std.In_channel.with_file ping_file ~f:(fun chan ->
+        NetKAT_Parser.pred_program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let peg =
+      Core.Std.In_channel.with_file peg_file ~f:(fun chan ->
+        NetKAT_Parser.pred_program NetKAT_Lexer.token (Lexing.from_channel chan)) in
+    let global_physical_pol =
+      NetKAT_VirtualCompiler.compile vpolicy vrel vtopo ving_pol ving veg ptopo ping peg in
+    let local_physical_pol =
+      NetKAT_GlobalCompiler.compile ping peg global_physical_pol in
+    let print_table (sw, t) =
+      Format.fprintf fmt "[global] Flowtable for Switch %Ld:@\n@[%a@]@\n@\n"
+        sw
+        SDN_Types.format_flowTable t in
+    let _ = begin
+    Format.fprintf fmt "@\n[global] Parsed: @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @[%s@] @\n@\n"
+      vpolicy_file vrel_file vtopo_file ving_pol_file ving_file veg_file ptopo_file ping_file peg_file;
+    Format.fprintf fmt "[global] Global Policy:@\n@[%a@]@\n@\n"
+      NetKAT_Pretty.format_policy global_physical_pol;
+    Format.fprintf fmt "[global] CPS Policy:@\n@[%a@]@\n@\n"
+      NetKAT_Pretty.format_policy local_physical_pol
+    end in
+    let compiled_physical_pol = NetKAT_LocalCompiler.compile local_physical_pol in
+    let switches = NetKAT_Misc.switches_of_policy
+      (Optimize.mk_seq (NetKAT_Types.Filter ping) global_physical_pol) in
+    let tables =
+      List.map (fun sw -> (sw, NetKAT_LocalCompiler.to_table sw compiled_physical_pol)) switches in
+    Format.fprintf fmt "[global] Localized CPS Policies:@\n@\n";
+    List.iter print_table tables;
+    ()
+end
+
 module Dump = struct
   open Core.Std
   open Async.Std
@@ -220,12 +278,53 @@ let global_cmd : unit Cmdliner.Term.t * Cmdliner.Term.info =
   Term.(pure Global.main $ ingress_file $ egress_file $ policy_file),
   Term.info "global" ~doc
 
+let virtual_cmd : unit Cmdliner.Term.t * Cmdliner.Term.info =
+  let doc = "invoke the virtual compiler and dump the resulting flow tables" in
+  let vpolicy =
+    let doc = "file containing the local virtual policy (containing no links)" in
+    Arg.(required & (pos 0 (some file) None) & info [] ~docv:"VPOLICY" ~doc)
+  in
+  let vrel =
+    let doc = "file containing the virtual relation" in
+    Arg.(required & (pos 1 (some file) None) & info [] ~docv:"VREL" ~doc)
+  in
+  let vtopo =
+    let doc = "file containing the virtual topology" in
+    Arg.(required & (pos 2 (some file) None) & info [] ~docv:"VTOPO" ~doc)
+  in
+  let ving_pol =
+    let doc = "file containing the virtual ingress policy" in
+    Arg.(required & (pos 3 (some file) None) & info [] ~docv:"VINGRESSPOL" ~doc)
+  in
+  let ving =
+    let doc = "file containing the virtual ingress predicate" in
+    Arg.(required & (pos 4 (some file) None) & info [] ~docv:"VINGRESS" ~doc)
+  in
+  let veg =
+    let doc = "file containing the virtual eggress predicate" in
+    Arg.(required & (pos 5 (some file) None) & info [] ~docv:"VINGRESS" ~doc)
+  in
+  let ptopo =
+    let doc = "file containing the virtual topology" in
+    Arg.(required & (pos 6 (some file) None) & info [] ~docv:"PTOPO" ~doc)
+  in
+  let ping =
+    let doc = "file containing the virtual ingress predicate" in
+    Arg.(required & (pos 7 (some file) None) & info [] ~docv:"PINGRESS" ~doc)
+  in
+  let peg =
+    let doc = "file containing the virtual eggress predicate" in
+    Arg.(required & (pos 8 (some file) None) & info [] ~docv:"PEGRESS" ~doc)
+  in
+  Term.(pure Virtual.main $ vpolicy $ vrel $ vtopo $ ving_pol $ ving $ veg $ ptopo $ ping $ peg),
+  Term.info "virtual" ~doc
+
 let default_cmd : unit Cmdliner.Term.t * Cmdliner.Term.info =
   let doc = "an sdn controller platform" in
   Term.(ret (pure (`Help(`Plain, None)))),
   Term.info "katnetic" ~version:"1.6.1" ~doc
 
-let cmds = [run_cmd; dump_cmd; global_cmd]
+let cmds = [run_cmd; dump_cmd; global_cmd; virtual_cmd]
 
 let () = match Term.eval_choice default_cmd cmds with
   | `Error _ -> exit 1 | _ -> exit 0

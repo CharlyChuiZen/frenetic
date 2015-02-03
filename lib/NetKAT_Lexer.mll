@@ -31,10 +31,9 @@ rule token = parse
   | "?" { QMARK }
   | "*" { STAR }
   | "=>" { DBLARROW }
+  | "=>>" { DBLARROWDBLHEAD }
   | "true" { TRUE }
   | "false" { FALSE }
-  | "pipe" { PIPE }
-  | "query" { QUERY }
   | "all" { ALL }
   | "fwd" { FWD }
   | "<none>" { NONE }
@@ -53,6 +52,8 @@ rule token = parse
   | "ipProto" { PROTOCOLTYPE }
   | "tcpSrcPort" { TCPSRCPORT }
   | "tcpDstPort" { TCPDSTPORT }
+  | "vswitch" { VSWITCH }
+  | "vport" { VPORT }
   | "begin" { BEGIN }
   | "end" { END }
   | "if" { IF }

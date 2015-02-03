@@ -16,6 +16,7 @@
 
 %token LPAREN RPAREN BEGIN END LCURLY RCURLY
 %token DBLARROW
+%token DBLARROWDBLHEAD
 %token NOT QMARK
 %token AND OR
 %token TRUE FALSE
@@ -23,7 +24,7 @@
 %token ALL FWD STAR
 %token NONE
 %token EQUALS
-%token SWITCH PORT SRCMAC DSTMAC FRAMETYPE VLAN VLANPCP SRCIP DSTIP PROTOCOLTYPE TCPSRCPORT TCPDSTPORT
+%token SWITCH PORT SRCMAC DSTMAC FRAMETYPE VLAN VLANPCP SRCIP DSTIP PROTOCOLTYPE TCPSRCPORT TCPDSTPORT VSWITCH VPORT
 %token IF THEN ELSE
 %token SEMI AMP BAR PLUS COMMA SLASH
 %token LET IN
@@ -162,6 +163,10 @@ xpredicate:
       { Test(TCPSrcPort $3) }
   | TCPDSTPORT EQUALS tcp_port_value
       { Test(TCPDstPort $3) }
+  | VSWITCH EQUALS int64_value
+      { Test(VSwitch $3) }
+  | VPORT EQUALS int64_value
+      { Test(VPort $3) }
 
 /* TODO(jnf): should these be non-associative? */
 policy : 
@@ -213,19 +218,25 @@ xpolicy:
       { Mod(TCPSrcPort $3) }
   | TCPDSTPORT ASSIGN tcp_port_value
       { Mod(TCPDstPort $3) }
+  | VSWITCH ASSIGN int64_value
+      { Mod(VSwitch $3) }
+  | VPORT ASSIGN int64_value
+      { Mod(VPort $3) }
   | ID
       { id }
   | DROP 
       { drop }
   | int64_value AT int32_value DBLARROW int64_value AT int32_value
       { Link($1, $3, $5, $7) }
+  | int64_value AT int64_value DBLARROWDBLHEAD int64_value AT int64_value
+      { VLink($1, $3, $5, $7) }
   | LPAREN policy RPAREN 
       { $2 }
 
-pred_program : 
+pred_program :
   | predicate EOF  { $1 }
 
-program : 
+program :
   | policy EOF  { $1 }
 
 %%

@@ -78,6 +78,10 @@ EXTEND Gram
         <:expr<NetKAT_Types.(Test (IP4Dst ($n$, $m$)))>>
     | "ip4Dst"; "="; n = nk_ipv4 ->
         <:expr<NetKAT_Types.(Test (IP4Dst ($n$, 32l)))>>
+    | "vswitch"; "="; n = nk_int64 ->
+        <:expr<NetKAT_Types.(Test (VSwitch $n$))>>
+    | "vport"; "="; n = nk_int64 ->
+        <:expr<NetKAT_Types.(Test (VPort $n$))>>
     | `ANTIQUOT s -> AQ.parse_expr _loc s
   ]];
 
@@ -126,6 +130,10 @@ EXTEND Gram
         <:expr<NetKAT_Types.(Mod (TCPSrcPort $n$))>>
     | "tcpDstPort"; ":="; n = nk_int ->
         <:expr<NetKAT_Types.(Mod (TCPDstPort $n$))>>
+    | "vswitch"; ":="; n = nk_int64 ->
+        <:expr<NetKAT_Types.(Mod (VSwitch $n$))>>
+    | "vport"; ":="; n = nk_int64 ->
+        <:expr<NetKAT_Types.(Mod (VPort $n$))>>
     | `ANTIQUOT s -> AQ.parse_expr _loc s
   ]];
 

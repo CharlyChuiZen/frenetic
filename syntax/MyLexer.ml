@@ -132,8 +132,9 @@ let rec token c = lexer
      ANTIQUOT( L.latin1_sub_lexeme c.lexbuf 1 (L.lexeme_length c.lexbuf - 1))
   | [ "()!+;=*+/" ] | ":=" | "true" | "false" | "switch" | "port" | "vlan"
     | "vlanPcp" | "ethType" | "ipProto" | "tcpSrcPort" | "tcpDstPort"
-    | "ethSrc" | "ethDst" | "ip4Src"| "ip4Dst" | "&&" | "||"  | "id"
-    | "drop" | "if" | "then" | "else" | "filter" ->
+    | "ethSrc" | "ethDst" | "ip4Src"| "ip4Dst" | "vswitch" | "vport"
+    | "&&" | "||"  | "id"
+    | "drop" | "if" | "then" | "else" | "filter" | "<>" ->
       KEYWORD (L.latin1_lexeme c.lexbuf)
   | _ -> illegal c
 
@@ -158,3 +159,4 @@ let mk () start_loc cs =
     Some (tok, current_loc c)
   in
   Stream.from next
+

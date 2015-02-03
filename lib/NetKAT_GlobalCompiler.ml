@@ -15,7 +15,6 @@ let match_location sw pt =
     program counters *)
 let initial_global_pc = 0xffff
 
-
 let rec tag_links (pol : policy) : policy =
   let module T = Core.Std.Hashtbl.Poly in
   let pc_tbl = T.create () in
@@ -32,6 +31,7 @@ let rec tag_links (pol : policy) : policy =
     | Link (_,_,sw2,pt2) ->
       let pc = next_pc sw2 pt2 in
       mk_big_seq [set_pc pc; p; match_pc pc]
+    | _ -> assert false
   in
   tag pol
 
@@ -60,6 +60,7 @@ let rec split_pol (pol: policy) : policy * policy * policy =
     let k = mk_seq k_p (mk_union e d) in
     (e, d, k)
   | Link (sw1,pt1,sw2,pt2) -> (drop, match_location sw1 pt1, match_location sw2 pt2)
+  | _ -> assert false
 
 let compile (ingress : pred) (egress : pred) (p : policy) =
   let ingress = mk_filter ingress in
